@@ -4,6 +4,7 @@
 void ofApp::setup(){
     ofSetWindowTitle("SyphonMixer");
     ofSetFrameRate(60);
+    ofBackground(0, 0, 0, 0);
 
     outWidth = 1280;
     outHeight = 720;
@@ -14,52 +15,66 @@ void ofApp::setup(){
     opacityA = 0.5f;
     opacityB = 0.5f;
     fadeAB = 0.5f;
-    masterFade = 1.0f;
+    fadeMaster = 1.0f;
     
     fadeWhite = 0.0f;
     strobeInterval = 3;
     
     drawInfo = true;
-    
-    serverNameA = "Layer 1";
-    appNameA = "VDMX5";
+
     scaleA = 1.0f;
     centeringA = false;
-    
-    serverNameB = "Layer 2";
-    appNameB = "VDMX5";
+
     scaleB = 1.0f;
     centeringB = false;
 
 
     //Setup Syphon
     mixedSyphonServer.setName("Mixed Output");
+    dir.setup();
     
-    mClient0.setup();
-    //mClient0.set("","Simple Server");
-    mClient0.set(serverNameA,appNameA);
+    dirIdxA = -1;
+    dirIdxB = -1;
 
-    mClient1.setup();
-    //mClient1.set("", "Simple Server");
-    mClient1.set(serverNameB,appNameB);
+    mClientA.setup();
+    if(dir.isValidIndex(dirIdxA))
+        mClientA.set(dir.getDescription(dirIdxA));
+
+    mClientB.setup();
+    if(dir.isValidIndex(dirIdxB))
+        mClientB.set(dir.getDescription(dirIdxB));
     
-    mixedFbo.allocate(outWidth, outHeight, GL_RGBA);
-    mixedTex.allocate(outWidth, outHeight, GL_RGBA);
+    ofAddListener(dir.events.serverAnnounced, this, &ofApp::serverAnnounced);
+    ofAddListener(dir.events.serverRetired, this, &ofApp::serverRetired);
+    
+    mixedFbo.allocate(outWidth, outHeight, GL_RGB);
+    mixedTex.allocate(outWidth, outHeight, GL_RGB);
     
     
     //Setup GUI
     gui = new ofxDatGui();
     gui->setPosition(drawWidth + 1, drawHeight + 1);
+    gui2 = new ofxDatGui();
+    gui2->setPosition(drawWidth + 221, drawHeight+ 1);
     
-    //gui->addHeader("SyphonMixer Control");
+    auto theme = new ofxDatGuiTheme();
+    theme->init();
+    //theme->layout.upperCaseLabels = false;
+    theme->layout.textInput.forceUpperCase = false;
+    theme->layout.width = 220;
+    theme->layout.height = 20;
+
+    gui->setTheme(theme);
+    gui2->setTheme(theme);
+
     gui->addFRM();
-    gui->addBreak()->setHeight(10.0f);
+    //gui->addBreak()->setHeight(10.0f);
     
     //Fade
     fadeAB.set("Fade A/B", fadeAB, 0.0f, 1.0f);
     gui->addSlider(fadeAB);
-    masterFade.set("Master Fade", masterFade, 0.0f, 1.0f);
-    gui->addSlider(masterFade);
+    fadeMaster.set("Master Fade", fadeMaster, 0.0f, 1.0f);
+    gui->addSlider(fadeMaster);
     
     //FX
     fadeWhite.set("White Fade", fadeWhite, 0.0f, 1.0f);
@@ -68,41 +83,32 @@ void ofApp::setup(){
     gui->addToggle("White Strobe", false);
     strobeInterval.set("Strobe Interval", strobeInterval, 1, 6);
     gui->addSlider(strobeInterval);
-    gui->addBreak()->setHeight(10.0f);
+    //gui->addBreak()->setHeight(10.0f);
     
     //Blend mode
     vector<string> options = {"Blend Alpha", "Blend Add", "Blend Screen", "Blend Multiply", "Blend Subtract"};
     gui->addDropdown("Blend Mode[WIP]", options);
     
-    gui2 = new ofxDatGui();
-    gui2->setPosition(drawWidth + 276, drawHeight+ 1);
-    
+    // GUI2
     // Input A
     ofxDatGuiFolder* inputA = gui2->addFolder("Input A", ofColor::white);
-    inputA->addTextInput("App Name", appNameA);
-    inputA->addTextInput("Server Name", serverNameA);
     scaleA.set("Scale[WIP]", scaleA, 0.0f, 4.0f);
     inputA->addSlider(scaleA);
     inputA->addToggle("Centering[WIP]", false);
-    //inputA->expand();
+    inputA->expand();
     
-    inputA->onTextInputEvent(this, &ofApp::onTextInputEventInputA);
     inputA->onToggleEvent(this, &ofApp::onToggleEventInputA);
     inputA->onSliderEvent(this, &ofApp::onSliderEventInputA);
 
     // Input B
     ofxDatGuiFolder* inputB = gui2->addFolder("Input B", ofColor::red);
-    inputB->addTextInput("App Name", appNameB);
-    inputB->addTextInput("Server Name", serverNameB);
     scaleB.set("Scale[WIP]", scaleB, 0.0f, 4.0f);
     inputB->addSlider(scaleB);
     inputB->addToggle("Centering[WIP]", false);
-    //inputB->expand();
+    inputB->expand();
     
-    inputB->onTextInputEvent(this, &ofApp::onTextInputEventInputB);
     inputB->onToggleEvent(this, &ofApp::onToggleEventInputB);
     inputB->onSliderEvent(this, &ofApp::onSliderEventInputB);
-    
     
     //Output Resolution
     ofxDatGuiFolder* resCtrl = gui2->addFolder("Output Resolution", ofColor::yellow);
@@ -111,16 +117,44 @@ void ofApp::setup(){
     outHeight.set("Height", outHeight, 1, 1920);
     resCtrl->addSlider(outHeight);
     resCtrl->expand();
-    
     gui2->addToggle("Draw Info", true);
 
+    
+    // Source Selection
+    sourceAHeader = new ofxDatGui();
+    sourceAHeader->setPosition(drawWidth + 441, drawHeight + 1);
+    sourceAHeader->addLabel("Source A");
+    sourceAHeader->setTheme(theme);
+    
+    sourceBHeader = new ofxDatGui();
+    sourceBHeader->setPosition(drawWidth + 441, drawHeight + 125);
+    sourceBHeader->addLabel("Source B");
+    sourceBHeader->setTheme(theme);
+    
+    sourceA = new ofxDatGuiScrollView("Source A", 4);
+    sourceA->setWidth(220);
+    sourceA->setPosition(drawWidth + 441, drawHeight + 20);
+    
+    sourceB = new ofxDatGuiScrollView("Source B", 4);
+    sourceB->setWidth(220);
+    sourceB->setPosition(drawWidth + 441, drawHeight + 145);
+    
+    for(int i = 0; i != dir.getServerList().size(); ++i) {
+        ofxSyphonServerDescription description = dir.getDescription(i);
+        sourceA->add(description.appName + " - " + description.serverName);
+        sourceB->add(description.appName + " - " + description.serverName);
+    }
+    
+    sourceA->onScrollViewEvent(this, &ofApp::onScrollViewEventA);
+    sourceB->onScrollViewEvent(this, &ofApp::onScrollViewEventB);
+
+    
+    
     gui->onSliderEvent(this, &ofApp::onSliderEvent);
-    gui2->onSliderEvent(this, &ofApp::onSliderEvent);
     gui->onToggleEvent(this, &ofApp::onToggleEvent);
+    
+    gui2->onSliderEvent(this, &ofApp::onSliderEvent);
     gui2->onToggleEvent(this, &ofApp::onToggleEvent);
-
-
-
 
 }
 
@@ -128,15 +162,15 @@ void ofApp::setup(){
 void ofApp::update(){
     mixedFbo.begin();
         ofBackground(0, 0, 0);
-    
+
         ofEnableAlphaBlending();
         ofEnableBlendMode(OF_BLENDMODE_ADD);
 
         ofSetColor(255,255,255,255*opacityA);
-        mClient0.draw(0, 0);
+        mClientA.draw(0, 0);
 
         ofSetColor(255,255,255,255*opacityB);
-        mClient1.draw(0, 0);
+        mClientB.draw(0, 0);
     
         if(strobeBlack){
             if(strobe > strobeInterval){
@@ -164,9 +198,9 @@ void ofApp::update(){
             ofDrawRectangle(0, 0, outWidth, outHeight);
         }
     
-        if(masterFade < 1.0f){
+        if(fadeMaster < 1.0f){
             ofEnableBlendMode(OF_BLENDMODE_ALPHA);
-            ofSetColor(0,0,0,255*(1.0f - masterFade));
+            ofSetColor(0,0,0,255*(1.0f - fadeMaster));
             ofDrawRectangle(0, 0, outWidth, outHeight);
         }
     
@@ -178,6 +212,9 @@ void ofApp::update(){
     mixedTex = mixedFbo.getTexture();
     mixedSyphonServer.publishTexture(&mixedTex);
     
+    sourceA->update();
+    sourceB->update();
+
 }
 
 //--------------------------------------------------------------
@@ -188,10 +225,10 @@ void ofApp::draw(){
     ofSetColor(255);
 
     //Draw Preview1
-    mClient0.draw(0, 0, drawWidth, drawHeight);
+    mClientA.draw(0, 0, drawWidth, drawHeight);
     
     //Draw Preview2
-    mClient1.draw(drawWidth + 1, 0, drawWidth, drawHeight);
+    mClientB.draw(drawWidth + 1, 0, drawWidth, drawHeight);
     
     //Draw mixed
     mixedFbo.draw(0, drawHeight + 1, drawWidth, drawHeight);
@@ -202,11 +239,11 @@ void ofApp::draw(){
     ofDrawLine(0, drawHeight, drawWidth*2, drawHeight);
     
     if(drawInfo){
-        string infoA = "Input A (" + mClient0.getApplicationName() + " - " + mClient0.getServerName() + ", " + ofToString(mClient0.getWidth()) + "x" + ofToString(mClient0.getHeight()) + ")";
-        string infoB = "Input B (" + mClient1.getApplicationName() + " - " + mClient1.getServerName() + ", " + ofToString(mClient1.getWidth()) + "x" + ofToString(mClient1.getHeight()) + ")";
+        string infoA = "Input A (" + appNameA + " - " + serverNameA + ", " + ofToString(mClientA.getWidth()) + "x" + ofToString(mClientA.getHeight()) + ")";
+        string infoB = "Input B (" + appNameB + " - " + serverNameB + ", " + ofToString(mClientB.getWidth()) + "x" + ofToString(mClientB.getHeight()) + ")";
 
         string blendmode_str = "add";   // WIP
-        string infoOut = "Output (SyphonMixerDebug - " + mixedSyphonServer.getName() + ", " +ofToString(outWidth) + "x" + ofToString(outHeight) + ", " + blendmode_str + ")";
+        string infoOut = "Output (" + ofToString(outWidth) + "x" + ofToString(outHeight) + ", " + blendmode_str + ")";
     
         ofSetColor(0,0,0,255);
         ofDrawBitmapString(infoA, 1, 11);
@@ -217,6 +254,10 @@ void ofApp::draw(){
         ofDrawBitmapString(infoA, 0, 10);
         ofDrawBitmapString(infoB, drawWidth + 1, 10);
         ofDrawBitmapString(infoOut, 0, drawHeight + 11);
+        
+        sourceA->draw();
+        sourceB->draw();
+
     }
 }
 
@@ -252,28 +293,24 @@ void ofApp::onToggleEvent(ofxDatGuiToggleEvent e){
     }
 }
 
-void ofApp::onTextInputEventInputA(ofxDatGuiTextInputEvent e){
-    if(e.target->getName() == "Server Name"){
-        serverNameA = e.text;
-    }
+void ofApp::onScrollViewEventA(ofxDatGuiScrollViewEvent e)
+{
+    ofxSyphonServerDescription description = dir.getDescription(e.index);
+    if(dir.isValidIndex(e.index))
+        mClientA.set(description);
     
-    if(e.target->getName() == "App Name"){
-        appNameA = e.text;
-    }
-    mClient0.set(serverNameA,appNameA);
-
+    serverNameA = description.serverName;
+    appNameA = description.appName;
 }
 
-void ofApp::onTextInputEventInputB(ofxDatGuiTextInputEvent e){
-    if(e.target->getName() == "Server Name"){
-        serverNameB = e.text;
-    }
+void ofApp::onScrollViewEventB(ofxDatGuiScrollViewEvent e)
+{
+    ofxSyphonServerDescription description = dir.getDescription(e.index);
+    if(dir.isValidIndex(e.index))
+        mClientB.set(description);
     
-    if(e.target->getName() == "App Name"){
-        appNameB = e.text;
-    }
-    mClient1.set(serverNameB,appNameB);
-
+    serverNameB = description.serverName;
+    appNameB = description.appName;
 }
 
 void ofApp::onSliderEventInputA(ofxDatGuiSliderEvent e)
@@ -294,7 +331,31 @@ void ofApp::onToggleEventInputB(ofxDatGuiToggleEvent e){
     centeringB = e.checked;
 }
 
+void ofApp::serverAnnounced(ofxSyphonServerDirectoryEventArgs &arg)
+{
+    sourceA->clear();
+    sourceB->clear();
+    for(int i = 0; i != dir.getServerList().size(); ++i) {
+        ofxSyphonServerDescription description = dir.getDescription(i);
+        sourceA->add(description.appName + " - " + description.serverName);
+        sourceB->add(description.appName + " - " + description.serverName);
+    }
+    dirIdxA = 0;
+    dirIdxB = 0;
+}
 
+void ofApp::serverRetired(ofxSyphonServerDirectoryEventArgs &arg)
+{
+    sourceA->clear();
+    sourceB->clear();
+    for(int i = 0; i != dir.getServerList().size(); ++i) {
+        ofxSyphonServerDescription description = dir.getDescription(i);
+        sourceA->add(description.appName + " - " + description.serverName);
+        sourceB->add(description.appName + " - " + description.serverName);
+    }
+    dirIdxA = 0;
+    dirIdxB = 0;
+}
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key){
 
@@ -306,41 +367,16 @@ void ofApp::keyReleased(int key){
 }
 
 //--------------------------------------------------------------
-void ofApp::mouseMoved(int x, int y ){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseDragged(int x, int y, int button){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mousePressed(int x, int y, int button){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseReleased(int x, int y, int button){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseEntered(int x, int y){
-
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseExited(int x, int y){
-
-}
-
-//--------------------------------------------------------------
 void ofApp::windowResized(int w, int h){
     drawWidth = w/2;
     drawHeight = h/2;
     gui->setPosition(drawWidth+1, drawHeight+1);
-    gui2->setPosition(drawWidth + 271, drawHeight+ 1);
+    gui2->setPosition(drawWidth + 221, drawHeight+ 1);
+    
+    sourceAHeader->setPosition(drawWidth + 441, drawHeight + 1);
+    sourceBHeader->setPosition(drawWidth + 441, drawHeight + 125);
+    sourceA->setPosition(drawWidth + 441, drawHeight + 20);
+    sourceB->setPosition(drawWidth + 441, drawHeight + 145);
 }
 
 //--------------------------------------------------------------

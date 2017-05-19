@@ -13,12 +13,6 @@ class ofApp : public ofBaseApp{
 
 		void keyPressed(int key);
 		void keyReleased(int key);
-		void mouseMoved(int x, int y );
-		void mouseDragged(int x, int y, int button);
-		void mousePressed(int x, int y, int button);
-		void mouseReleased(int x, int y, int button);
-		void mouseEntered(int x, int y);
-		void mouseExited(int x, int y);
 		void windowResized(int w, int h);
 		void dragEvent(ofDragInfo dragInfo);
 		void gotMessage(ofMessage msg);
@@ -27,27 +21,28 @@ class ofApp : public ofBaseApp{
     void onToggleEvent(ofxDatGuiToggleEvent e);
 
     void onSliderEventInputA(ofxDatGuiSliderEvent e);
-    void onTextInputEventInputA(ofxDatGuiTextInputEvent e);
     void onToggleEventInputA(ofxDatGuiToggleEvent e);
-
     void onSliderEventInputB(ofxDatGuiSliderEvent e);
-    void onTextInputEventInputB(ofxDatGuiTextInputEvent e);
     void onToggleEventInputB(ofxDatGuiToggleEvent e);
+    
+    void onScrollViewEventA(ofxDatGuiScrollViewEvent e);
+    void onScrollViewEventB(ofxDatGuiScrollViewEvent e);
 
+    void serverAnnounced(ofxSyphonServerDirectoryEventArgs &arg);
+    void serverRetired(ofxSyphonServerDirectoryEventArgs &arg);
     
     ofxDatGui* gui;
     
     // Fade
     ofParameter<float> fadeAB;
-    ofParameter<float> masterFade;
+    ofParameter<float> fadeMaster;
     
     // FX
     ofParameter<float> fadeWhite;
     bool strobeBlack;
     bool strobeWhite;
     ofParameter<int> strobeInterval;
-    
-    
+
     ofxDatGui* gui2;
 
     // Input A
@@ -66,6 +61,12 @@ class ofApp : public ofBaseApp{
     ofParameter<int> outWidth;
     ofParameter<int> outHeight;
     
+    ofxDatGui* sourceAHeader;
+    ofxDatGui* sourceBHeader;
+
+    ofxDatGuiScrollView* sourceA;
+    ofxDatGuiScrollView* sourceB;
+    
     int drawWidth;
     int drawHeight;
     float opacityA;
@@ -79,7 +80,11 @@ class ofApp : public ofBaseApp{
     ofTexture mixedTex;
     
     ofxSyphonServer mixedSyphonServer;
+    ofxSyphonServerDirectory dir;
+    ofxSyphonClient mClientA;
+    ofxSyphonClient mClientB;
     
-    ofxSyphonClient mClient0;
-    ofxSyphonClient mClient1;
+    int dirIdxA;
+    int dirIdxB;
+
 };
