@@ -3,6 +3,7 @@
 #include "ofMain.h"
 #include "ofxSyphon.h"
 #include "ofxDatGui.h"
+#include "ofxXmlSettings.h"
 
 class ofApp : public ofBaseApp{
 
@@ -10,6 +11,7 @@ class ofApp : public ofBaseApp{
 		void setup();
 		void update();
 		void draw();
+        void exit();
 
 		void keyPressed(int key);
 		void keyReleased(int key);
@@ -31,6 +33,7 @@ class ofApp : public ofBaseApp{
     void serverAnnounced(ofxSyphonServerDirectoryEventArgs &arg);
     void serverRetired(ofxSyphonServerDirectoryEventArgs &arg);
     
+    ofxXmlSettings settings;
     ofxDatGui* gui;
     
     // Fade

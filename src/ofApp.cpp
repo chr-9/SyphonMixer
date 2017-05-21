@@ -5,9 +5,6 @@ void ofApp::setup(){
     ofSetWindowTitle("SyphonMixer");
     ofSetFrameRate(60);
     ofBackground(0, 0, 0, 0);
-
-    outWidth = 1280;
-    outHeight = 720;
     
     drawWidth = ofGetWidth() / 2;
     drawHeight = ofGetHeight() / 2;
@@ -16,19 +13,19 @@ void ofApp::setup(){
     opacityB = 0.5f;
     fadeAB = 0.5f;
     fadeMaster = 1.0f;
-    
     fadeWhite = 0.0f;
-    strobeInterval = 3;
     
-    drawInfo = true;
+    settings.loadFile("settings.xml");
+    outWidth = settings.getValue("settings:outWidth", 1280);
+    outHeight = settings.getValue("settings:outHeight", 720);
+    strobeInterval = settings.getValue("settings:strobeInterval", 3);
+    drawInfo = settings.getValue("settings:drawInfo", true);
+    scaleA = settings.getValue("settings:scaleA", 1.0f);
+    scaleB = settings.getValue("settings:scaleB", 1.0f);
+    centeringA = settings.getValue("settings:centeringA", false);
+    centeringB = settings.getValue("settings:centeringB", false);
 
-    scaleA = 1.0f;
-    centeringA = false;
-
-    scaleB = 1.0f;
-    centeringB = false;
-
-
+    
     //Setup Syphon
     mixedSyphonServer.setName("Mixed Output");
     dir.setup();
@@ -68,7 +65,6 @@ void ofApp::setup(){
     gui2->setTheme(theme);
 
     gui->addFRM();
-    //gui->addBreak()->setHeight(10.0f);
     
     //Fade
     fadeAB.set("Fade A/B", fadeAB, 0.0f, 1.0f);
@@ -83,7 +79,6 @@ void ofApp::setup(){
     gui->addToggle("White Strobe", false);
     strobeInterval.set("Strobe Interval", strobeInterval, 1, 6);
     gui->addSlider(strobeInterval);
-    //gui->addBreak()->setHeight(10.0f);
     
     //Blend mode
     vector<string> options = {"Blend Alpha", "Blend Add", "Blend Screen", "Blend Multiply", "Blend Subtract"};
@@ -92,9 +87,9 @@ void ofApp::setup(){
     // GUI2
     // Input A
     ofxDatGuiFolder* inputA = gui2->addFolder("Input A", ofColor::white);
-    scaleA.set("Scale[WIP]", scaleA, 0.0f, 4.0f);
+    scaleA.set("Scale", scaleA, 0.0f, 4.0f);
     inputA->addSlider(scaleA);
-    inputA->addToggle("Centering[WIP]", false);
+    inputA->addToggle("Centering", centeringA);
     inputA->expand();
     
     inputA->onToggleEvent(this, &ofApp::onToggleEventInputA);
@@ -102,9 +97,9 @@ void ofApp::setup(){
 
     // Input B
     ofxDatGuiFolder* inputB = gui2->addFolder("Input B", ofColor::red);
-    scaleB.set("Scale[WIP]", scaleB, 0.0f, 4.0f);
+    scaleB.set("Scale", scaleB, 0.0f, 4.0f);
     inputB->addSlider(scaleB);
-    inputB->addToggle("Centering[WIP]", false);
+    inputB->addToggle("Centering", centeringB);
     inputB->expand();
     
     inputB->onToggleEvent(this, &ofApp::onToggleEventInputB);
@@ -117,7 +112,7 @@ void ofApp::setup(){
     outHeight.set("Height", outHeight, 1, 1920);
     resCtrl->addSlider(outHeight);
     resCtrl->expand();
-    gui2->addToggle("Draw Info", true);
+    gui2->addToggle("Draw Info", drawInfo);
 
     
     // Source Selection
@@ -167,11 +162,23 @@ void ofApp::update(){
         ofEnableBlendMode(OF_BLENDMODE_ADD);
 
         ofSetColor(255,255,255,255*opacityA);
-        mClientA.draw(0, 0);
-
-        ofSetColor(255,255,255,255*opacityB);
-        mClientB.draw(0, 0);
+        if(centeringA){
+            int posX = (outWidth / 2) - ((mClientA.getWidth() / 2) + ((mClientA.getWidth() / 2) * (scaleA - 1.0)));
+            int posY = (outHeight / 2) - (mClientA.getHeight() / 2) - ((mClientA.getHeight() / 2) * (scaleA - 1.0));
+            mClientA.draw(posX, posY, mClientA.getWidth() * scaleA, mClientA.getHeight() * scaleA);
+        }else{
+            mClientA.draw(0, 0, mClientA.getWidth() * scaleA, mClientA.getHeight() * scaleA);
+        }
     
+        ofSetColor(255,255,255,255*opacityB);
+        if(centeringB){
+            int posX = (outWidth / 2) - ((mClientB.getWidth() / 2) + ((mClientB.getWidth() / 2) * (scaleB - 1.0)));
+            int posY = (outHeight / 2) - (mClientB.getHeight() / 2) - ((mClientB.getHeight() / 2) * (scaleB - 1.0));
+            mClientB.draw(posX, posY, mClientB.getWidth() * scaleB, mClientB.getHeight() * scaleB);
+        }else{
+            mClientB.draw(0, 0, mClientB.getWidth() * scaleB, mClientB.getHeight() * scaleB);
+        }
+
         if(strobeBlack){
             if(strobe > strobeInterval){
                 ofEnableBlendMode(OF_BLENDMODE_ALPHA);
@@ -387,4 +394,17 @@ void ofApp::gotMessage(ofMessage msg){
 //--------------------------------------------------------------
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
+}
+
+void ofApp::exit()
+{
+    settings.setValue("settings:outWidth", outWidth);
+    settings.setValue("settings:outHeight", outHeight);
+    settings.setValue("settings:strobeInterval", strobeInterval);
+    settings.setValue("settings:drawInfo", drawInfo);
+    settings.setValue("settings:scaleA", scaleA);
+    settings.setValue("settings:scaleB", scaleB);
+    settings.setValue("settings:centeringA", centeringA);
+    settings.setValue("settings:centeringB", centeringB);
+    settings.saveFile("settings.xml");
 }
